@@ -1,0 +1,42 @@
+{
+  "name": "@manturhub/cli",
+  "version": "0.8.1",
+  "description": "ManturHub 算子广场 CLI：通过 REST 发现和调用 AI 算子、浏览配方，并安装 Skill 与 Agent 套件",
+  "type": "module",
+  "bin": {
+    "manturhub": "./bin/cli.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "test": "node --test",
+    "prepack": "npm test"
+  },
+  "files": [
+    "bin",
+    "lib",
+    "README.md"
+  ],
+  "keywords": [
+    "manturhub",
+    "ai",
+    "agent",
+    "api",
+    "cli",
+    "operator",
+    "skill",
+    "recipe",
+    "算子",
+    "配方"
+  ],
+  "license": "MIT",
+  "homepage": "https://hub.mantur.ai",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/86777835/manturhub-cli.git"
+  },
+  "bugs": {
+    "url": "https://github.com/86777835/manturhub-cli/issues"
+  }
+}
