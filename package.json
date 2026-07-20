@@ -31,12 +31,5 @@
     "配方"
   ],
   "license": "MIT",
-  "homepage": "https://hub.mantur.ai",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/86777835/manturhub-cli.git"
-  },
-  "bugs": {
-    "url": "https://github.com/86777835/manturhub-cli/issues"
-  }
+  "homepage": "https://hub.mantur.ai"
 }
