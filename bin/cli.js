@@ -100,7 +100,7 @@ const HELP = `manturhub — ManturHub 算子广场 CLI  v${VERSION}
   manturhub init                      装「ManturHub 使用 skill」+ 写 agent 引导（推荐：让 agent 会用算子）
   manturhub skill ls                  列出平台 Skill（业务成品流程，如爆款复刻）
   manturhub skill add <slug> [--client claude-code|codex|all]
-                                      安装 Skill 到指定 Agent
+                                      自动识别 Agent 并安装 Skill（可显式指定）
   manturhub suite ls                  列出 Agent 套件（多角色团队工作区，给 Agent 配一整个团队）
   manturhub suite install <slug>      安装套件为工作目录 ./<slug>/（不复制 API Key）
   manturhub recipe [关键词] [--cat x] 搜配方（已验证创作的效果+可复现参数；分类 video/image/script）
@@ -469,7 +469,7 @@ async function main() {
           console.error(error.message);
           process.exit(1);
         }
-        await skillAdd(args[2], getFlag("client", "claude-code"));
+        await skillAdd(args[2], getFlag("client"));
       }
       else {
         console.error("用法: manturhub skill ls   |   manturhub skill add <slug> [--client claude-code|codex|all]");
