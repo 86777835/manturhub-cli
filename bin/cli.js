@@ -84,6 +84,37 @@ function usdFor(dumplings) {
   return Number.isFinite(value) ? `$${(value * 0.01).toFixed(2)} USD` : "-";
 }
 
+const CAT_LABELS = {
+  text: "文本",
+  image: "图片",
+  video: "视频",
+  audio: "音频",
+  data: "数据",
+};
+
+function catLabel(cat) {
+  return CAT_LABELS[cat] || cat || "其他";
+}
+
+// Human commands accept either the stable operator ID or its Chinese display name.
+// Machine-facing --json responses keep IDs unchanged for automation compatibility.
+async function resolveOperator(ref) {
+  const direct = await apiFetch(`/api/v1/operators/${encodeURIComponent(ref)}`, { auth: "optional" });
+  if (direct.ok) return direct.json.operator || direct.json;
+  if (direct.status !== 404) throw new Error(`算子信息获取失败（HTTP ${direct.status}）`);
+
+  const listed = await apiFetch("/api/v1/operators?status=online", { auth: "optional" });
+  if (!listed.ok) throw new Error(`算子列表获取失败（HTTP ${listed.status}）`);
+  const operators = listed.json.operators || listed.json || [];
+  const matches = operators.filter((item) => item?.name === ref);
+  if (matches.length === 0) throw new Error(`未找到算子“${ref}”`);
+  if (matches.length > 1) throw new Error(`算子名称“${ref}”不唯一，请联系平台处理`);
+
+  const detail = await apiFetch(`/api/v1/operators/${encodeURIComponent(matches[0].id)}`, { auth: "optional" });
+  if (!detail.ok) throw new Error(`算子信息获取失败（HTTP ${detail.status}）`);
+  return detail.json.operator || detail.json;
+}
+
 const HELP = `manturhub — ManturHub 算子广场 CLI  v${VERSION}
 
 用法:
@@ -91,10 +122,10 @@ const HELP = `manturhub — ManturHub 算子广场 CLI  v${VERSION}
   manturhub login --key sk-xxx        手动配置 API Key（存 ~/.manturhub/config.json）
   manturhub login --key-stdin         从 stdin 安全读取 API Key
   manturhub ls [--cat <分类>] [--json]  列出上线算子（无需登录）
-  manturhub describe <算子ID> [--json]  查看算子入参字段（无需登录）
-  manturhub quote <算子ID>            查询实时计费公式（不要使用 Skill 内的历史价格）
-  manturhub run <算子ID> --json '{}'  试算并确认费用后调用（异步算子自动轮询到出结果）
-  manturhub run <算子ID> --json-file x.json  从文件读参数（prompt 来自配方/用户时更安全）
+  manturhub describe <中文算子名> [--json]  查看算子入参字段（无需登录）
+  manturhub quote <中文算子名>            查询实时计费公式（不要使用 Skill 内的历史价格）
+  manturhub run <中文算子名> --json '{}'  试算并确认费用后调用（异步算子自动轮询到出结果）
+  manturhub run <中文算子名> --json-file x.json  从文件读参数（prompt 来自配方/用户时更安全）
   manturhub upload <本地文件>         上传图片/音频/视频 → 公网 URL（喂算子前先转换本地文件）
   manturhub status <poll_url>         查异步任务状态（配合 run --no-wait）
   manturhub balance                   查询馒头余额
@@ -206,9 +237,9 @@ async function main() {
       }
       console.log(`ManturHub 上线算子（${ops.length} 个）:\n`);
       for (const o of ops) {
-        console.log(`  ${o.id.padEnd(26)} ${o.name}   [${o.cat}]`);
+        console.log(`  ${o.name}   [${catLabel(o.cat)}]`);
       }
-      console.log(`\n用 \`manturhub describe <算子ID>\` 查入参，\`manturhub run <算子ID> --json '{...}'\` 调用`);
+      console.log(`\n用 \`manturhub describe <中文算子名>\` 查入参，\`manturhub run <中文算子名> --json '{...}'\` 调用`);
       break;
     }
 
@@ -225,17 +256,18 @@ async function main() {
         console.error(error.message);
         process.exit(1);
       }
-      const r = await apiFetch(`/api/v1/operators/${encodeURIComponent(op)}`, { auth: "optional" });
-      if (!r.ok) {
-        console.error(`获取失败（HTTP ${r.status}）: ${op}`);
+      let o;
+      try {
+        o = await resolveOperator(op);
+      } catch (error) {
+        console.error(error.message);
         process.exit(1);
       }
-      const o = r.json.operator || r.json;
       if (hasFlag("json")) {
         console.log(JSON.stringify(o, null, 2));
         break;
       }
-      console.log(`\n${o.id}  ${o.name || ""}   [${o.cat || "-"}] · ${o.status || "-"}`);
+      console.log(`\n${o.name || "未命名算子"}   [${catLabel(o.cat)}] · ${o.status || "-"}`);
       if (o.description) console.log(o.description);
       const ps = o.params_schema || (o.meta && o.meta.params_schema);
       if (ps && Array.isArray(ps.fields) && ps.fields.length) {
@@ -247,9 +279,9 @@ async function main() {
         }
         if (ps.async) console.log(`\n异步算子：run 默认自动轮询到出结果（--no-wait 只拿 task_id）`);
       } else {
-        console.log(`\n（该算子未声明入参 schema，详见 ${getBaseUrl()}/marketplace/${o.id}）`);
+        console.log(`\n（该算子未声明入参 schema，请在 ManturHub 算子广场查看详情）`);
       }
-      console.log(`\n调用: manturhub run ${o.id} --json '{...}'`);
+      console.log(`\n调用: manturhub run '${o.name}' --json '{...}'`);
       break;
     }
 
@@ -265,7 +297,14 @@ async function main() {
         console.error(error.message);
         process.exit(1);
       }
-      const r = await apiFetch(`/api/v1/operators/${encodeURIComponent(op)}/quote`, { auth: "optional" });
+      let operator;
+      try {
+        operator = await resolveOperator(op);
+      } catch (error) {
+        console.error(error.message);
+        process.exit(1);
+      }
+      const r = await apiFetch(`/api/v1/operators/${encodeURIComponent(operator.id)}/quote`, { auth: "optional" });
       if (!r.ok) {
         console.error(`查询价格失败（HTTP ${r.status}）: ${JSON.stringify(r.json)}`);
         process.exit(1);
@@ -280,7 +319,7 @@ async function main() {
           )
         );
       } else {
-        console.log(`${r.json.operatorId || op}: ${r.json.formula || "详见算子页"}`);
+        console.log(`${operator.name}: ${r.json.formula || "详见算子页"}`);
         if (r.json.floor !== undefined) console.log(`最低扣费: ${usdFor(r.json.floor)}（${r.json.floor} 馒头）`);
       }
       break;
@@ -333,12 +372,14 @@ async function main() {
           process.exit(1);
         }
       }
-      const detail = await apiFetch(`/api/v1/operators/${encodeURIComponent(op)}`, { auth: "optional" });
-      if (!detail.ok) {
-        console.error(`参数校验前无法读取算子 schema（HTTP ${detail.status}），已停止调用避免误扣费`);
+      let operator;
+      try {
+        operator = await resolveOperator(op);
+      } catch (error) {
+        console.error(`${error.message}，已停止调用避免误扣费`);
         process.exit(1);
       }
-      const operator = detail.json.operator || detail.json;
+      const operatorId = operator.id;
       const schema = operator.params_schema || operator.meta?.params_schema;
       try {
         body = validateParams(body, schema, { coerceStrings: !jsonArg && !jsonFile });
@@ -348,7 +389,7 @@ async function main() {
       }
       let quoteId = getFlag("confirm");
       if (!quoteId) {
-        const quote = await apiFetch(`/api/v1/operators/${encodeURIComponent(op)}/quote`, {
+        const quote = await apiFetch(`/api/v1/operators/${encodeURIComponent(operatorId)}/quote`, {
           method: "POST",
           body,
         });
@@ -360,13 +401,14 @@ async function main() {
         quoteId = quote.json?.quote_id;
         if (Number.isFinite(estimated) && estimated > 0) {
           if (process.stdin.isTTY && process.stderr.isTTY) {
-            if (!(await confirmCharge(quote.json))) {
+            if (!(await confirmCharge({ ...quote.json, operator_name: operator.name }))) {
               console.error("已取消，未调用算子、未扣费。");
               process.exit(2);
             }
           } else {
             console.error(JSON.stringify({
               error: "CONFIRMATION_REQUIRED",
+              operator_name: operator.name,
               message: `本次预计消耗 ${formatMantou(estimated)}，请先取得用户确认`,
               estimated_dumplings: estimated,
               balance: quote.json?.balance,
@@ -379,7 +421,7 @@ async function main() {
         }
       }
       const r = await apiFetch(
-        `/api/v1/operators/${encodeURIComponent(op)}/invoke`,
+        `/api/v1/operators/${encodeURIComponent(operatorId)}/invoke`,
         {
           method: "POST",
           body,
@@ -400,12 +442,12 @@ async function main() {
             ),
         });
         console.log(JSON.stringify(final, null, 2));
-        printBillingResult(final);
+        printBillingResult(final, process.stderr, operator.name);
         const st = final && final.status;
         if (st === "failed" || st === "error" || (final && final._timeout)) process.exit(1);
       } else {
         console.log(JSON.stringify(r.json, null, 2));
-        printBillingResult(r.json);
+        printBillingResult(r.json, process.stderr, operator.name);
         if (!r.ok) process.exit(1);
       }
       break;

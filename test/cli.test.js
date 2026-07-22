@@ -24,13 +24,13 @@ test("CLI supports machine discovery and validates paid calls before invoke", as
   let base;
   const server = createServer((req, res) => {
     if (req.method === "GET" && req.url === "/api/v1/operators?status=online") {
-      json(res, 200, { operators: [{ id: "demo", name: "Demo", cat: "text" }] });
+      json(res, 200, { operators: [{ id: "demo", name: "示例算子", cat: "text" }] });
       return;
     }
     if (req.method === "GET" && req.url === "/api/v1/operators/demo") {
       json(res, 200, {
         id: "demo",
-        name: "Demo",
+        name: "示例算子",
         cat: "text",
         params_schema: {
           fields: [
@@ -109,8 +109,11 @@ test("CLI supports machine discovery and validates paid calls before invoke", as
   try {
     const listed = await execFileAsync(process.execPath, [cli, "ls", "--json"], { env });
     assert.deepEqual(JSON.parse(listed.stdout), {
-      operators: [{ id: "demo", name: "Demo", cat: "text" }],
+      operators: [{ id: "demo", name: "示例算子", cat: "text" }],
     });
+    const humanList = await execFileAsync(process.execPath, [cli, "ls"], { env });
+    assert.match(humanList.stdout, /示例算子\s+\[文本\]/);
+    assert.doesNotMatch(humanList.stdout, /\bdemo\b/);
     await assert.rejects(
       () => execFileAsync(process.execPath, [cli, "ls", "--typo"], { env }),
       (error) => {
@@ -120,11 +123,12 @@ test("CLI supports machine discovery and validates paid calls before invoke", as
     );
 
     await assert.rejects(
-      () => execFileAsync(process.execPath, [cli, "run", "demo", "--prompt=hello", "--count", "2"], { env }),
+      () => execFileAsync(process.execPath, [cli, "run", "示例算子", "--prompt=hello", "--count", "2"], { env }),
       (error) => {
         assert.equal(error.code, 3);
         assert.match(error.stderr, /CONFIRMATION_REQUIRED/);
         assert.match(error.stderr, /4 馒头/);
+        assert.match(error.stderr, /示例算子/);
         assert.match(error.stderr, /quote-test/);
         return true;
       }
@@ -133,7 +137,7 @@ test("CLI supports machine discovery and validates paid calls before invoke", as
 
     const called = await execFileAsync(
       process.execPath,
-      [cli, "run", "demo", "--prompt=hello", "--count", "2", "--confirm", "quote-test"],
+      [cli, "run", "示例算子", "--prompt=hello", "--count", "2", "--confirm", "quote-test"],
       { env }
     );
     assert.deepEqual(JSON.parse(called.stdout), { ok: true });
