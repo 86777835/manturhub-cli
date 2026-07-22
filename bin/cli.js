@@ -10,6 +10,7 @@ import { createReadStream, readFileSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join, basename, extname } from "node:path";
 import { parseDynamicParams, validateParams } from "../lib/params.js";
+import { confirmCharge, formatMantou, printBillingResult } from "../lib/billing-confirm.js";
 
 // 本地文件 → MIME(presign 只接受 image/audio/video)
 const MIME_BY_EXT = {
@@ -67,8 +68,8 @@ function assertFlags(tokens, { value = [], boolean = [] } = {}) {
 function assertRunControlFlags(tokens) {
   for (let i = 0; i < tokens.length; i++) {
     const token = tokens[i];
-    if (token === "--no-wait" || token.startsWith("--json=") || token.startsWith("--json-file=")) continue;
-    if (token === "--json" || token === "--json-file") {
+    if (token === "--no-wait" || token.startsWith("--json=") || token.startsWith("--json-file=") || token.startsWith("--confirm=")) continue;
+    if (token === "--json" || token === "--json-file" || token === "--confirm") {
       const value = tokens[i + 1];
       if (value === undefined || value.startsWith("--")) throw new Error(`参数 ${token} 缺少值`);
       i++;
@@ -92,7 +93,7 @@ const HELP = `manturhub — ManturHub 算子广场 CLI  v${VERSION}
   manturhub ls [--cat <分类>] [--json]  列出上线算子（无需登录）
   manturhub describe <算子ID> [--json]  查看算子入参字段（无需登录）
   manturhub quote <算子ID>            查询实时计费公式（不要使用 Skill 内的历史价格）
-  manturhub run <算子ID> --json '{}'  调用算子（异步算子自动轮询到出结果；--no-wait 只拿 job_id）
+  manturhub run <算子ID> --json '{}'  试算并确认费用后调用（异步算子自动轮询到出结果）
   manturhub run <算子ID> --json-file x.json  从文件读参数（prompt 来自配方/用户时更安全）
   manturhub upload <本地文件>         上传图片/音频/视频 → 公网 URL（喂算子前先转换本地文件）
   manturhub status <poll_url>         查异步任务状态（配合 run --no-wait）
@@ -161,7 +162,14 @@ async function main() {
           `✓ Key 已验证并保存。账号: ${r.json.email || "-"}   余额: ${usdFor(r.json.balance)}（${r.json.balance ?? "-"} 馒头）`
         );
       } else {
-        console.error(`Key 验证失败（HTTP ${r.status}），未修改本地配置。请确认 key 是否正确、是否已激活。`);
+        const base = getBaseUrl();
+        const productionHint = new URL(base).hostname === "hub.mantur.ai"
+          ? " 对外用户请在 https://hub.mantur.ai 创建生产 Key；hub.mantur.cn 的测试 Key 不能用于生产。"
+          : "";
+        console.error(
+          `Key 验证失败（HTTP ${r.status}），未修改本地配置。当前连接：${base}。` +
+          `Key 必须由这个站点创建，请确认 Key 是否正确、是否已激活。${productionHint}`
+        );
         process.exit(1);
       }
       break;
@@ -338,9 +346,46 @@ async function main() {
         console.error(`参数校验失败: ${error.message}`);
         process.exit(1);
       }
+      let quoteId = getFlag("confirm");
+      if (!quoteId) {
+        const quote = await apiFetch(`/api/v1/operators/${encodeURIComponent(op)}/quote`, {
+          method: "POST",
+          body,
+        });
+        if (!quote.ok) {
+          console.error(`本次费用试算失败（HTTP ${quote.status}）: ${JSON.stringify(quote.json)}`);
+          process.exit(1);
+        }
+        const estimated = Number(quote.json?.estimated_dumplings);
+        quoteId = quote.json?.quote_id;
+        if (Number.isFinite(estimated) && estimated > 0) {
+          if (process.stdin.isTTY && process.stderr.isTTY) {
+            if (!(await confirmCharge(quote.json))) {
+              console.error("已取消，未调用算子、未扣费。");
+              process.exit(2);
+            }
+          } else {
+            console.error(JSON.stringify({
+              error: "CONFIRMATION_REQUIRED",
+              message: `本次预计消耗 ${formatMantou(estimated)}，请先取得用户确认`,
+              estimated_dumplings: estimated,
+              balance: quote.json?.balance,
+              formula: quote.json?.formula,
+              quote_id: quoteId,
+              retry_with: `--confirm ${quoteId}`,
+            }, null, 2));
+            process.exit(3);
+          }
+        }
+      }
       const r = await apiFetch(
         `/api/v1/operators/${encodeURIComponent(op)}/invoke`,
-        { method: "POST", body, timeoutMs: 120000 }
+        {
+          method: "POST",
+          body,
+          timeoutMs: 120000,
+          headers: quoteId ? { "X-Mantur-Quote-Id": quoteId } : {},
+        }
       );
       // 异步算子(返回 poll_url)默认自动轮询到出结果;--no-wait 只拿 job_id。
       const pollUrl = r.ok && r.json && r.json.poll_url;
@@ -355,10 +400,12 @@ async function main() {
             ),
         });
         console.log(JSON.stringify(final, null, 2));
+        printBillingResult(final);
         const st = final && final.status;
         if (st === "failed" || st === "error" || (final && final._timeout)) process.exit(1);
       } else {
         console.log(JSON.stringify(r.json, null, 2));
+        printBillingResult(r.json);
         if (!r.ok) process.exit(1);
       }
       break;

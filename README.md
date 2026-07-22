@@ -15,6 +15,8 @@ manturhub login
 printf '%s' "$YOUR_MANTURHUB_KEY" | manturhub login --key-stdin
 ```
 
+CLI 默认连接生产站 `https://hub.mantur.ai`，Key 也必须在该生产站创建。`hub.mantur.cn` 是独立测试环境，其 Key 不能用于生产站。
+
 需要 Node.js ≥ 18。也可免安装运行：`npx -y @manturhub/cli <命令>`。
 
 ## 快速开始
@@ -29,7 +31,9 @@ manturhub quote op.text.commerce-copy
 manturhub run op.text.commerce-copy --json '{"product_info":"便携榨汁杯，USB 充电，300ml","scene":"product_title","tone":"lively"}'
 ```
 
-CLI 会在付费调用前按算子实时 schema 校验未知字段、必填项、类型和枚举，校验失败不会发起 invoke。
+CLI 会在付费调用前按算子实时 schema 校验未知字段、必填项、类型和枚举，校验失败不会发起 invoke。校验通过后会显示本次预计消耗和计费依据，获得确认才调用；完成后显示实际消耗和退款。批量参数也按整批请求试算。
+
+在 Agent 或脚本等非交互环境中，第一次运行只返回报价和 `quote_id`，不会调用或扣费；Agent 向用户确认后，使用提示中的 `--confirm <quote_id>` 执行。报价 5 分钟内有效且只能使用一次。
 
 ## 主要命令
 

@@ -54,6 +54,23 @@ test("CLI supports machine discovery and validates paid calls before invoke", as
       });
       return;
     }
+    if (req.method === "POST" && req.url === "/api/v1/operators/demo/quote") {
+      let raw = "";
+      req.setEncoding("utf8");
+      req.on("data", (chunk) => (raw += chunk));
+      req.on("end", () => {
+        const body = JSON.parse(raw);
+        const estimated = (body.count || 1) * 2;
+        json(res, 200, {
+          operator_id: "demo",
+          estimated_dumplings: estimated,
+          balance: 100,
+          formula: `${body.count || 1} 项 × 2 馒头`,
+          quote_id: "quote-test",
+        });
+      });
+      return;
+    }
     if (req.method === "POST" && req.url === "/api/v1/operators/demo/invoke") {
       let raw = "";
       req.setEncoding("utf8");
@@ -102,9 +119,21 @@ test("CLI supports machine discovery and validates paid calls before invoke", as
       }
     );
 
+    await assert.rejects(
+      () => execFileAsync(process.execPath, [cli, "run", "demo", "--prompt=hello", "--count", "2"], { env }),
+      (error) => {
+        assert.equal(error.code, 3);
+        assert.match(error.stderr, /CONFIRMATION_REQUIRED/);
+        assert.match(error.stderr, /4 馒头/);
+        assert.match(error.stderr, /quote-test/);
+        return true;
+      }
+    );
+    assert.equal(invocations.length, 0);
+
     const called = await execFileAsync(
       process.execPath,
-      [cli, "run", "demo", "--prompt=hello", "--count", "2"],
+      [cli, "run", "demo", "--prompt=hello", "--count", "2", "--confirm", "quote-test"],
       { env }
     );
     assert.deepEqual(JSON.parse(called.stdout), { ok: true });
