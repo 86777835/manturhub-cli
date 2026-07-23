@@ -31,7 +31,7 @@ manturhub quote 电商文案生成
 manturhub run 电商文案生成 --json '{"product_info":"便携榨汁杯，USB 充电，300ml","scene":"product_title","tone":"lively"}'
 ```
 
-CLI 会在付费调用前按算子实时 schema 校验未知字段、必填项、类型和枚举，校验失败不会发起 invoke。校验通过后会显示本次预计消耗和计费依据，获得确认才调用；完成后显示实际消耗和退款。批量参数也按整批请求试算。
+CLI 会在付费调用前按算子实时 schema 校验未知字段、必填项、类型和枚举，校验失败不会发起 invoke。校验通过后会显示本次预计消耗和计费依据，获得确认才调用；完成后在最终 JSON 的 \`_billing\` 返回实际消耗和退款，并同步显示到终端。批量参数按整批请求试算；多次调用应逐笔汇总 \`charged_dumplings\` 和 \`refunded_dumplings\`，不得自行估算。
 
 面向用户的列表、详情、报价、确认和结算统一显示中文算子名，也可直接用中文名调用。英文算子 ID 仅保留在 `--json` 机器输出和内部 API 请求中，供 Agent 与脚本稳定使用。
 

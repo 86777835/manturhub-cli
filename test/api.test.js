@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import test from "node:test";
-import { apiFetch } from "../lib/api.js";
+import { apiFetch, retainBilling } from "../lib/api.js";
 import { getBaseUrl } from "../lib/config.js";
 
 async function withServer(handler, run) {
@@ -39,6 +39,25 @@ test("optional auth permits public requests without an API key", async () => {
 
 test("required auth fails before making a request", async () => {
   await assert.rejects(() => apiFetch("/private", { key: null }), /未配置 API Key/);
+});
+
+test("async polling preserves submit billing until final settlement arrives", () => {
+  const submitBilling = {
+    estimated_dumplings: 120,
+    charged_dumplings: 120,
+    refunded_dumplings: 0,
+    final: false,
+  };
+  assert.deepEqual(retainBilling({ status: "done" }, submitBilling), {
+    status: "done",
+    _billing: submitBilling,
+  });
+
+  const finalBilling = { ...submitBilling, final: true };
+  assert.deepEqual(
+    retainBilling({ status: "done", _billing: finalBilling }, submitBilling),
+    { status: "done", _billing: finalBilling }
+  );
 });
 
 test("optional GET retries anonymously when a saved key is expired", async () => {
