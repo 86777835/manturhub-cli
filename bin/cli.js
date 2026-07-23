@@ -436,6 +436,7 @@ async function main() {
           `⏳ 异步任务 ${r.json.job_id || ""} 已提交，轮询结果中（预计 ${r.json.estimated_seconds || "?"}s；加 --no-wait 可只拿 job_id）…\n`
         );
         const final = await pollJob(pollUrl, {
+          initialBilling: r.json._billing,
           onTick: (j) =>
             process.stderr.write(
               `   ${j.status || "?"}${j.elapsed_ms ? " " + Math.round(j.elapsed_ms / 1000) + "s" : ""}\n`
@@ -517,6 +518,7 @@ async function main() {
       }
       const r = await apiFetch(pu);
       console.log(JSON.stringify(r.json, null, 2));
+      printBillingResult(r.json);
       if (!r.ok) process.exit(1);
       break;
     }
