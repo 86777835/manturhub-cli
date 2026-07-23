@@ -8,6 +8,7 @@ const schema = {
     { name: "count", type: "integer", required: false },
     { name: "enabled", type: "boolean", required: false },
     { name: "tags", type: "array", required: false },
+    { name: "platforms", type: "string[] | string", required: false },
     { name: "mode", type: "string", enum: ["fast", "quality"], required: false },
   ],
 };
@@ -37,6 +38,21 @@ test("schema validation rejects unknown, missing, invalid type and enum", () => 
   assert.throws(() => validateParams({}, schema), /缺少必填参数: prompt/);
   assert.throws(() => validateParams({ prompt: "hello", count: 1.2 }, schema), /类型错误/);
   assert.throws(() => validateParams({ prompt: "hello", mode: "slow" }, schema), /只能是/);
+});
+
+test("schema validation accepts explicitly declared union types", () => {
+  assert.deepEqual(
+    validateParams({ prompt: "hello", platforms: ["hg", "hm"] }, schema),
+    { prompt: "hello", platforms: ["hg", "hm"] }
+  );
+  assert.deepEqual(
+    validateParams({ prompt: "hello", platforms: "hg,hm" }, schema),
+    { prompt: "hello", platforms: "hg,hm" }
+  );
+  assert.throws(
+    () => validateParams({ prompt: "hello", platforms: 1 }, schema),
+    /需要 array 或 string/
+  );
 });
 
 test("schema-less operators still require an object body", () => {

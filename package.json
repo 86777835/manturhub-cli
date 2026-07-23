@@ -1,6 +1,6 @@
 {
   "name": "@manturhub/cli",
-  "version": "0.9.4",
+  "version": "0.9.5",
   "description": "ManturHub 算子广场 CLI：通过 REST 发现和调用 AI 算子、浏览配方，并安装 Skill 与 Agent 套件",
   "type": "module",
   "bin": {
