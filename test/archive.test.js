@@ -25,7 +25,7 @@ test("archive entry validation rejects links and excessive file counts", () => {
     /符号链接或硬链接/
   );
   assert.throws(
-    () => validateArchiveEntries(Array.from({ length: 2001 }, (_, index) => `f${index}`)),
+    () => validateArchiveEntries(Array.from({ length: 20001 }, (_, index) => `f${index}`)),
     /文件过多/
   );
   assert.throws(
