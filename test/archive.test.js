@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -49,6 +49,38 @@ test("safe extraction verifies archive metadata before copying files", () => {
     assert.equal(readFileSync(join(dest, "SKILL.md"), "utf8"), "skill");
     assert.equal(readFileSync(join(dest, "refs", "guide.md"), "utf8"), "guide");
   } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("safe extraction falls back to tar when unzip lists but cannot extract", () => {
+  const dir = mkdtempSync(join(tmpdir(), "manturhub-archive-fallback-test-"));
+  const source = join(dir, "source");
+  const dest = join(dir, "dest");
+  const zip = join(dir, "package.zip");
+  const fakeBin = join(dir, "bin");
+  const oldPath = process.env.PATH;
+  try {
+    mkdirSync(source);
+    mkdirSync(fakeBin);
+    writeFileSync(join(source, "SKILL.md"), "skill");
+    execFileSync("zip", ["-q", "-r", zip, "."], { cwd: source });
+    const realUnzip = execFileSync("which", ["unzip"], { encoding: "utf8" }).trim();
+    const fakeUnzip = join(fakeBin, "unzip");
+    writeFileSync(fakeUnzip, `#!/bin/sh
+case "$1" in
+  -Z1|-Z) exec "${realUnzip}" "$@" ;;
+  *) exit 2 ;;
+esac
+`);
+    chmodSync(fakeUnzip, 0o755);
+    process.env.PATH = `${fakeBin}:${oldPath}`;
+
+    extractZipSafely(zip, dest);
+
+    assert.equal(readFileSync(join(dest, "SKILL.md"), "utf8"), "skill");
+  } finally {
+    process.env.PATH = oldPath;
     rmSync(dir, { recursive: true, force: true });
   }
 });
